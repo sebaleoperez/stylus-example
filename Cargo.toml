@@ -1,0 +1,24 @@
+[package]
+name = "stylus-example"
+version = "0.1.2"
+edition = "2021"
+
+[dependencies]
+openzeppelin-stylus = { git = "https://github.com/OpenZeppelin/rust-contracts-stylus", tag = "v0.1.0-rc" }
+
+# alloy-related
+alloy-primitives = { version = "0.3.1", default-features = false }
+
+# stylus-related
+stylus-sdk = { version = "=0.5.0", default-features = false }
+stylus-proc = { version = "=0.5.0", default-features = false }
+mini-alloc = "0.4.2"
+
+[features]
+export-abi = ["stylus-sdk/export-abi"]
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[build]
+target = "wasm32-unknown-unknown"
