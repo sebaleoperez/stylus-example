@@ -3,6 +3,7 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 use alloy_primitives::{Address, U256};
+use alloy_sol_types::sol;
 use openzeppelin_stylus::token::erc20::Erc20;
 use openzeppelin_stylus::token::erc20::IErc20;
 use openzeppelin_stylus::token::erc20::extensions::Erc20Metadata;
@@ -10,6 +11,7 @@ use openzeppelin_stylus::utils::Pausable;
 use openzeppelin_stylus::access::control::AccessControl;
 use stylus_sdk::prelude::{entrypoint, external, sol_storage};
 use stylus_sdk::msg;
+use stylus_proc::SolidityError;
 
 sol_storage! {
     #[entrypoint]
@@ -25,6 +27,68 @@ sol_storage! {
         // Blacklist
         mapping(address => bool) _blacklist;
     }
+}
+
+sol! {
+    /// The sender `account` is blacklisted.
+    ///
+    /// * `account` - Account that was found to be blacklisted.
+    #[derive(Debug)]
+    #[allow(missing_docs)]
+    error ERC20ExampleSenderBlacklisted(address account);
+    /// The recipient `account` is blacklisted.
+    ///
+    /// * `account` - Account that was found to be blacklisted.
+    #[derive(Debug)]
+    #[allow(missing_docs)]
+    error ERC20ExampleRecipientBlacklisted(address account);
+    /// The recipient `account` is already blacklisted.
+    ///
+    /// * `account` - Account that was found to be blacklisted.
+    #[derive(Debug)]
+    #[allow(missing_docs)]
+    error ERC20ExampleAlreadyBlacklisted(address account);
+    /// The `account` is not blacklisted.
+    /// 
+    /// * `account` - Account that was found to be not blacklisted.
+    #[derive(Debug)]
+    #[allow(missing_docs)]
+    error ERC20ExampleNotBlacklistedAccount(address account);
+    /// The contract is paused.
+    /// 
+    #[derive(Debug)]
+    #[allow(missing_docs)]
+    error ERC20ExamplePausedContract();
+    /// The account is not authorized.
+    /// 
+    /// * `account` - Account that was found to be not authorized.
+    #[derive(Debug)]
+    #[allow(missing_docs)]
+    error ERC20ExampleNotAuthorized(address account);
+    /// An internal error occurred.
+    /// 
+    #[derive(Debug)]
+    #[allow(missing_docs)]
+    error ERC20ExampleInternalError();
+}
+
+/// An error that occurred in this contract.
+#[derive(SolidityError, Debug)]
+pub enum Error {
+    /// The caller account is blacklisted.
+    SenderBlacklisted(ERC20ExampleSenderBlacklisted),
+    /// The caller account is blacklisted.
+    RecipientBlacklisted(ERC20ExampleRecipientBlacklisted),
+    /// The address is already blacklisted.
+    AlreadyBlacklisted(ERC20ExampleAlreadyBlacklisted),
+    /// The address is not blacklisted.
+    RecipientNotBlacklisted(ERC20ExampleNotBlacklistedAccount),
+    /// The contracts is paused
+    ContractPaused(ERC20ExamplePausedContract),
+    /// The account is not authorized
+    NotAuthorized(ERC20ExampleNotAuthorized),
+    /// Internal Error
+    InternalError(ERC20ExampleInternalError),
 }
 
 // `keccak256("PAUSER_ROLE")`
@@ -70,10 +134,10 @@ impl Erc20Example {
     pub fn add_to_blacklist(
         &mut self,
         account: Address,
-    ) -> Result<(), Vec<u8>> {
-        self.access.only_role(Erc20Example::BLACKLISTER_ROLE.into())?;
+    ) -> Result<(), Error> {
+        self.access.only_role(Erc20Example::BLACKLISTER_ROLE.into()).map_err(|_| Error::NotAuthorized(ERC20ExampleNotAuthorized{ account: msg::sender() }))?;
         if self.is_blacklisted(account).unwrap() {
-            return Err(Vec::<u8>::from("Error::AddressAlreadyBlacklisted"));
+            return Err(Error::AlreadyBlacklisted(ERC20ExampleAlreadyBlacklisted{ account }));
         }
         self._blacklist.insert(account, true);
         Ok(())
@@ -82,19 +146,19 @@ impl Erc20Example {
     pub fn remove_from_blacklist(
         &mut self,
         account: Address,
-    ) -> Result<(), Vec<u8>> {
-        self.access.only_role(Erc20Example::BLACKLISTER_ROLE.into())?;
+    ) -> Result<(), Error> {
+        self.access.only_role(Erc20Example::BLACKLISTER_ROLE.into()).map_err(|_| Error::NotAuthorized(ERC20ExampleNotAuthorized{ account: msg::sender() }))?;
         if !self.is_blacklisted(account).unwrap() {
-            return Err(Vec::<u8>::from("Error::AddressNotBlacklisted"));
+            return Err(Error::RecipientNotBlacklisted(ERC20ExampleNotBlacklistedAccount{ account }));
         }
         self._blacklist.delete(account);
         Ok(())
     }
     
 
-    pub fn pause(&mut self) -> Result<(), Vec<u8>> {
-        self.access.only_role(Erc20Example::PAUSER_ROLE.into())?;
-        self.pausable.pause()?;
+    pub fn pause(&mut self) -> Result<(), Error> {
+        self.access.only_role(Erc20Example::PAUSER_ROLE.into()).map_err(|_| Error::NotAuthorized(ERC20ExampleNotAuthorized{ account: msg::sender() }))?;
+        self.pausable.pause().map_err(|_| Error::InternalError(ERC20ExampleInternalError{}))?;
         Ok(())
     }
 
@@ -102,14 +166,15 @@ impl Erc20Example {
         &mut self,
         to: Address,
         value: U256,
-    ) -> Result<bool, Vec<u8>> {
+    ) -> Result<bool, Error> {
         
         if self.is_blacklisted(msg::sender()).unwrap() {
-            return Err(Vec::<u8>::from("Error::AddressBlacklisted"));
+            return Err(Error::SenderBlacklisted(ERC20ExampleSenderBlacklisted{ account: msg::sender() }));
         }
         
-        self.pausable.when_not_paused()?;
-        self.erc20.transfer(to, value).map_err(|e| e.into())
+        self.pausable.when_not_paused().map_err(|_| Error::ContractPaused(ERC20ExamplePausedContract{}))?;
+        let result = self.erc20.transfer(to, value).map_err(|_| Error::InternalError(ERC20ExampleInternalError{}))?;
+        Ok(result) 
     }
 
     pub fn transfer_from(
@@ -117,12 +182,13 @@ impl Erc20Example {
         from: Address,
         to: Address,
         value: U256,
-    ) -> Result<bool, Vec<u8>> {
+    ) -> Result<bool, Error> {
         if self.is_blacklisted(msg::sender()).unwrap() {
-            return Err(Vec::<u8>::from("Error::AddressBlacklisted"));
+            return Err(Error::SenderBlacklisted(ERC20ExampleSenderBlacklisted{ account: msg::sender() }));
         }
         
-        self.pausable.when_not_paused()?;
-        self.erc20.transfer_from(from, to, value).map_err(|e| e.into())
+        self.pausable.when_not_paused().map_err(|_| Error::ContractPaused(ERC20ExamplePausedContract{}))?;
+        let result = self.erc20.transfer_from(from, to, value).map_err(|_| Error::InternalError(ERC20ExampleInternalError{}))?;
+        Ok(result)
     }
 }

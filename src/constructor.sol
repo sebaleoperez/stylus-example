@@ -13,8 +13,6 @@ contract Erc20Example {
     // Pausable-Data
     bool private _paused;
 
-    mapping(address account => uint256) _nonces;
-
     // AccessControl-Data
     struct RoleData {
         mapping(address account => bool) hasRole;

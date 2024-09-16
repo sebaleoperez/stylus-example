@@ -8,6 +8,7 @@ openzeppelin-stylus = { git = "https://github.com/OpenZeppelin/rust-contracts-st
 
 # alloy-related
 alloy-primitives = { version = "0.3.1", default-features = false }
+alloy-sol-types = { version = "0.3.1", default-features = false }
 
 # stylus-related
 stylus-sdk = { version = "=0.5.0", default-features = false }
